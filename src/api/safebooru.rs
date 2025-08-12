@@ -1,7 +1,7 @@
 use colored::Colorize;
 use rand::distributions::{Distribution, Uniform};
-use reqwest::Error;
-use serde::Deserialize;
+use serde_json::Value;
+use std::{error::Error, fmt};
 
 use crate::api::reformat_search_tags;
 use crate::app::Safebooru;
@@ -14,14 +14,12 @@ pub fn grab_random_image(args: Safebooru) -> String {
             eprintln!("{}\n", error);
             if args.questionable {
                 println!(
-                    "{}: Couldn't fetch API data. There's probably no \
-                            questionable images associated with your tag(s).",
+                    "{}: Couldn't fetch API data. There's probably no questionable images associated with your tag(s).",
                     "help".green()
                 );
             } else {
                 println!(
-                    "{}: Couldn't fetch API data. Try checking your \
-                            tag(s) for errors.",
+                    "{}: Couldn't fetch API data. Try checking your tag(s) for errors.",
                     "help".green()
                 );
             }
@@ -29,6 +27,11 @@ pub fn grab_random_image(args: Safebooru) -> String {
             std::process::exit(1);
         }
     };
+
+    if data.is_empty() {
+        eprintln!("No images found for the given tags.");
+        std::process::exit(1);
+    }
 
     let mut rng = rand::thread_rng();
     let random_number = Uniform::from(0..data.len());
@@ -60,16 +63,13 @@ pub fn grab_random_image(args: Safebooru) -> String {
             tags: tags.split(' ').collect(),
         };
 
-        match print_image_details(details) {
-            Ok(_) => (),
-            Err(error) => {
-                eprintln!("{}\n", error);
-                println!(
-                    "{}: There was an error when printing the tags. Please try again later.",
-                    "help".green()
-                );
-                std::process::exit(1);
-            }
+        if let Err(error) = print_image_details(details) {
+            eprintln!("{}\n", error);
+            println!(
+                "{}: There was an error when printing the tags. Please try again later.",
+                "help".green()
+            );
+            std::process::exit(1);
         }
     }
 
@@ -102,23 +102,87 @@ fn evaluate_arguments(args: &Safebooru) -> String {
     api
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
 struct ImageData {
-    // Image URL
     directory: String,
     image: String,
     id: u32,
-
-    // Image details
     rating: String,
     width: u32,
     height: u32,
     tags: String,
 }
 
-fn fetch_api_data(url: String) -> Result<Vec<ImageData>, Error> {
+#[derive(Debug)]
+struct ResponseError(String);
+
+impl fmt::Display for ResponseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Error for ResponseError {}
+
+fn parse_u32(value: Option<&Value>) -> u32 {
+    match value {
+        Some(Value::Number(n)) => n.as_u64().unwrap_or(0) as u32,
+        Some(Value::String(s)) => s.parse().unwrap_or(0),
+        _ => 0,
+    }
+}
+
+fn fetch_api_data(url: String) -> Result<Vec<ImageData>, Box<dyn Error>> {
     let response = reqwest::blocking::get(&url)?;
-    let data: Vec<ImageData> = response.json()?;
+    let text = response.text()?;
+
+    if text.trim_start().starts_with('<') {
+        let message = "Safebooru returned HTML or an unexpected response.";
+        return Err(Box::new(ResponseError(message.into())));
+    }
+
+    let raw: Value = serde_json::from_str(&text)
+        .map_err(|e| ResponseError(format!("Failed to parse JSON: {}", e)))?;
+    let arr = raw
+        .as_array()
+        .ok_or_else(|| ResponseError("Unexpected JSON structure".into()))?;
+
+    let mut data = Vec::new();
+    for item in arr {
+        let directory = item
+            .get("directory")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let image = item
+            .get("image")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let id = parse_u32(item.get("id"));
+        let rating = item
+            .get("rating")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let width = parse_u32(item.get("width"));
+        let height = parse_u32(item.get("height"));
+        let tags = item
+            .get("tags")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+
+        data.push(ImageData {
+            directory,
+            image,
+            id,
+            rating,
+            width,
+            height,
+            tags,
+        });
+    }
 
     Ok(data)
 }

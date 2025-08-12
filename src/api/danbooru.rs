@@ -1,6 +1,7 @@
 use colored::Colorize;
 use reqwest::StatusCode;
 use serde::Deserialize;
+use serde_json::Value;
 use std::error::Error;
 use std::fmt;
 
@@ -21,20 +22,21 @@ pub fn grab_random_image(args: Danbooru) -> String {
         .iter()
         .filter(|image| !image.file_url.is_empty())
         .collect();
+    if valid_data.is_empty() {
+        eprintln!("Danbooru returned no images with accessible URLs.");
+        std::process::exit(1);
+    }
     let image = &valid_data[0];
-    let image_url = &valid_data[0].file_url;
+    let image_url = &image.file_url;
 
     if args.details {
-        match print_image_details(image) {
-            Ok(_) => (),
-            Err(error) => {
-                eprintln!("{}\n", error);
-                println!(
-                    "{}: There was an error when printing the tags. Please try again later.",
-                    "help".green()
-                );
-                std::process::exit(1);
-            }
+        if let Err(error) = print_image_details(image) {
+            eprintln!("{}\n", error);
+            println!(
+                "{}: There was an error when printing the tags. Please try again later.",
+                "help".green()
+            );
+            std::process::exit(1);
         }
     }
 
@@ -105,21 +107,11 @@ fn evaluate_arguments(args: &Danbooru) -> String {
     api
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
 struct ImageData {
     source: String,
     pixiv_id: Option<u32>,
-
-    /*
-     * file_url can potentially not be present under certain conditions
-     * (e.g. banned artists and censored tags for users below Gold-level).
-     *
-     * When not present, it returns an empty string due to Default::default().
-     * https://serde.rs/field-attrs.html#default
-     */
-    #[serde(default)]
     file_url: String,
-
     tag_string_character: String,
     tag_string_artist: String,
     rating: char,
@@ -144,33 +136,97 @@ impl fmt::Display for ResponseError {
 
 impl Error for ResponseError {}
 
+fn value_to_string(v: Option<&Value>) -> String {
+    match v {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Number(n)) => n.to_string(),
+        _ => String::new(),
+    }
+}
+
+fn parse_u32(v: Option<&Value>) -> u32 {
+    match v {
+        Some(Value::Number(n)) => n.as_u64().unwrap_or(0) as u32,
+        Some(Value::String(s)) => s.parse().unwrap_or(0),
+        _ => 0,
+    }
+}
+
+fn parse_opt_u32(v: Option<&Value>) -> Option<u32> {
+    match v {
+        Some(Value::Number(n)) => n.as_u64().map(|v| v as u32),
+        Some(Value::String(s)) => s.parse().ok(),
+        _ => None,
+    }
+}
+
 fn fetch_api_data(url: String) -> Result<Vec<ImageData>, Box<dyn Error>> {
     let response = reqwest::blocking::get(&url)?;
-    let status_code = &response.status().to_string();
+    let status = response.status();
+    let text = response.text()?;
 
-    match response.status() {
-        StatusCode::OK => (),
-        StatusCode::NO_CONTENT => {
-            let message = format!(
-                "{}: Request succeeded, but it contains no content.",
-                status_code.yellow()
-            );
+    if text.trim_start().starts_with('<') {
+        let message = format!("{}: API returned HTML or an unexpected response.", status);
+        return Err(Box::new(ResponseError(message)));
+    }
+
+    if status != StatusCode::OK {
+        if let Ok(err) = serde_json::from_str::<FailureResponse>(&text) {
+            let message = format!("{}: {}", status, err.message);
             return Err(Box::new(ResponseError(message)));
-        }
-        _ => {
-            let data: FailureResponse = response.json()?;
-            let message = format!("{}: {}", &status_code.red(), data.message);
+        } else {
+            let message = format!("{}: Unexpected response.", status);
             return Err(Box::new(ResponseError(message)));
         }
     }
 
-    let data: Vec<ImageData> = response.json()?;
+    let raw: Value = serde_json::from_str(&text)
+        .map_err(|e| ResponseError(format!("Failed to parse JSON: {}", e)))?;
+    let arr = raw
+        .as_array()
+        .ok_or_else(|| ResponseError("Unexpected JSON structure".into()))?;
+
+    let mut data = Vec::new();
+    for item in arr {
+        let source = value_to_string(item.get("source"));
+        let pixiv_id = parse_opt_u32(item.get("pixiv_id"));
+        let file_url_raw = item
+            .get("file_url")
+            .and_then(Value::as_str)
+            .or_else(|| item.get("large_file_url").and_then(Value::as_str))
+            .unwrap_or("");
+        let mut file_url = file_url_raw.to_string();
+        if file_url.starts_with("//") {
+            file_url = format!("https:{}", file_url);
+        }
+        let tag_string_character = value_to_string(item.get("tag_string_character"));
+        let tag_string_artist = value_to_string(item.get("tag_string_artist"));
+        let rating = item
+            .get("rating")
+            .and_then(Value::as_str)
+            .and_then(|s| s.chars().next())
+            .unwrap_or('s');
+        let image_width = parse_u32(item.get("image_width"));
+        let image_height = parse_u32(item.get("image_height"));
+        let tag_string = value_to_string(item.get("tag_string"));
+
+        data.push(ImageData {
+            source,
+            pixiv_id,
+            file_url,
+            tag_string_character,
+            tag_string_artist,
+            rating,
+            image_width,
+            image_height,
+            tag_string,
+        });
+    }
 
     if data.is_empty() {
         let message = format!(
-            "{}: Although the request succeeded, \
-            there is no images associated with your tags.",
-            status_code.green()
+            "{}: Although the request succeeded, there are no images associated with your tags.",
+            status
         );
         return Err(Box::new(ResponseError(message)));
     }
@@ -202,8 +258,6 @@ fn print_image_details(info: &ImageData) -> Result<(), Box<dyn std::error::Error
     }
 
     if !source.is_empty() {
-        // source sometimes contains a direct link to pixiv images, and if
-        // you click on them it gives a 403 Forbidden
         if source.contains("pixiv") || source.contains("pximg") {
             let id = match pixiv_id {
                 Some(id) => id,
