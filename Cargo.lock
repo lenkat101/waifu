@@ -1281,21 +1281,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "show-waifu"
-version = "1.0.0"
-dependencies = [
- "atty",
- "clap",
- "colored",
- "image",
- "rand",
- "regex",
- "reqwest",
- "serde",
- "viuer",
-]
-
-[[package]]
 name = "signal-hook"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1607,6 +1592,22 @@ dependencies = [
  "lazy_static",
  "tempfile",
  "termcolor",
+]
+
+[[package]]
+name = "waifu"
+version = "1.0.0"
+dependencies = [
+ "atty",
+ "clap",
+ "colored",
+ "image",
+ "rand",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "viuer",
 ]
 
 [[package]]

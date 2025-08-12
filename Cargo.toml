@@ -1,12 +1,12 @@
 [package]
-name = "show-waifu"
+name = "waifu"
 description = "View random anime fanart in your terminal"
 version = "1.0.0"
 authors = ["AnOrdinaryUsername <kylemasa2@gmail.com>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-homepage = "https://github.com/AnOrdinaryUsername/show-waifu"
-repository = "https://github.com/AnOrdinaryUsername/show-waifu"
+homepage = "https://github.com/lenkat101/waifu"
+repository = "https://github.com/lenkat101/waifu"
 keywords = ["cli", "search", "anime", "terminal", "waifu"]
 categories = ["command-line-utilities"]
 edition = "2018"
@@ -16,6 +16,7 @@ edition = "2018"
 [dependencies]
 reqwest = { version = "0.10", features = ["blocking", "json"] }
 serde = { version = "^1", features = ["derive"] }
+serde_json = { version = "^1" }
 clap = "3.0.0-beta.2"
 colored = "2.0.0"
 viuer = "0.5.1"
