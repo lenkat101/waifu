@@ -164,7 +164,10 @@ fn fetch_api_data(url: String) -> Result<Vec<ImageData>, Box<dyn Error>> {
     use reqwest::blocking::Client;
     use std::time::Duration;
 
-    let client = Client::builder().timeout(Duration::from_secs(15)).build()?;
+    let client = Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent("Mozilla/5.0 (compatible; waifu/1.0; +https://github.com/lenkat101/waifu)")
+        .build()?;
     let response = client.get(&url).send()?;
     let status = response.status();
     let text = response.text()?;
