@@ -1,36 +1,38 @@
-# show-waifu
+# waifu
 
 A command-line app using the Safebooru + Danbooru API to display anime fanart in your terminal.
+
+Originally created as [show-waifu](https://github.com/AnOrdinaryUsername/show-waifu) by AnOrdinaryUsername.
 
 ![Using the CLI app to show an anime girl in a terminal](assets/showcase.gif)
 
 ## Installation
 
-Download `show-waifu-1.0.1.tar.gz` from releases and extract it using
+Download `waifu-1.0.0.tar.gz` from releases and extract it using
 either a GUI or the command line.
 
 If you're using the command line run
 
 ```sh
-tar -xf show-waifu-1.0.1.tar.gz
+tar -xf waifu-1.0.0.tar.gz
 ```
 
-Move the `show-waifu` executable into your bin
+Move the `waifu` executable into your bin
 
 ```sh
 # If ~/bin doesn't exist, create it using the following
 mkdir -p ~/bin
-mv show-waifu ~/bin
+mv waifu ~/bin
 ```
 
 Test it to see if it works, it should output an image in your terminal
 
 ```sh
-~/bin/show-waifu
+~/bin/waifu
 ```
 
-To make `show-waifu` available everywhere on the command line,
-add `~/bin/` to $PATH and reload the Bash configuration
+To make `waifu` available everywhere on the command line,
+add ~/bin to $PATH and reload the Bash configuration
 
 ```sh
 echo 'export PATH=~/bin:$PATH' >> ~/.bash_profile
@@ -40,7 +42,7 @@ source ~/.bash_profile
 Test it again, this time without `~/bin/`. If it works, you're all set to use it!
 
 ```sh
-show-waifu
+waifu
 ```
 
 ### Cargo
@@ -137,11 +139,12 @@ You can authenticate by doing the following:
 
 - Add this snippet to ~/.bash_profile
 
-  ```sh
-  echo "if [ -f ~/.bashrc ]; then
-  . ~/.bashrc
-   fi" >> ~/.bash_profile
-  ```
+   ```sh
+   # Check environmental variables. Both environmental variables should pop-up
+   printenv | grep -E '(DANBOORU_USERNAME|DANBOORU_API_KEY)' 
+   # If configured properly, you should be allowed to search more than 2 tags
+   waifu dan --safe --tags="when_the_imposter_is_sus_(meme) jerma985 cat_boy cat_paws cat_ears chartags:1"
+   ```
 
 - Reload the Bash configuration
 
@@ -171,26 +174,26 @@ show-waifu
 Read from stdin and show an image
 
 ```sh
-curl -s https://pbs.twimg.com/media/DoWo3unU4AA2etL\?format\=jpg\&name\=large | show-waifu
+curl -s https://pbs.twimg.com/media/DoWo3unU4AA2etL\?format\=jpg\&name\=large | waifu
 ```
 
 Search for a specific image on Safebooru based on tags, and print details
 
 ```sh
-show-waifu safe --details --tags="ncr_veteran_ranger night~"
+waifu safe --details --tags="ncr_veteran_ranger night~"
 ```
 
 Change a local file's height for viewing
 
 ```sh
-show-waifu --height 10 file ~/Pictures/doge.jpg
+waifu --height 10 file ~/Pictures/doge.jpg
 ```
 
 ### Command line options
 
 ```
 USAGE:
-    show-waifu [OPTIONS] [SUBCOMMAND]
+    waifu [OPTIONS] [SUBCOMMAND]
 
 FLAGS:
         --help       Prints help information
@@ -212,7 +215,7 @@ SUBCOMMANDS:
 
 ```
 USAGE:
-    show-waifu dan [FLAGS] [OPTIONS]
+    waifu dan [FLAGS] [OPTIONS]
 
 FLAGS:
     -d, --details         Show data related to image (artist, source, character, url, rating,
@@ -240,7 +243,7 @@ OPTIONS:
 
 ```
 USAGE:
-    show-waifu safe [FLAGS] [OPTIONS]
+    waifu safe [FLAGS] [OPTIONS]
 
 FLAGS:
     -d, --details         Show data related to image (url, rating, dimensions, tags)
