@@ -199,10 +199,6 @@ fn show_image_with_url(image_url: String, config: viuer::Config) -> Result<(), B
         .unwrap_or("")
         .to_string();
     let image_bytes = resp.bytes()?;
-    // Debug: persist last fetch for troubleshooting
-    if let Ok(mut f) = File::create(std::env::temp_dir().join("waifu_fetch_last.bin")) {
-        let _ = f.write_all(&image_bytes);
-    }
     let image = match image::load_from_memory(&image_bytes) {
         Ok(img) => img,
         Err(e) => {
@@ -230,20 +226,4 @@ fn show_image_with_path(image_path: PathBuf, config: viuer::Config) -> Result<()
     Ok(())
 }
 
-fn show_image_from_stdin(config: viuer::Config) -> Result<(), Box<dyn Error>> {
-    use std::io::{stdin, Read};
-
-    let stdin = stdin();
-    let mut handle = stdin.lock();
-
-    let mut buffer: Vec<u8> = Vec::new();
-    let _ = handle.read_to_end(&mut buffer)?;
-    if buffer.is_empty() {
-        return Err("No data provided on stdin".into());
-    }
-
-    let image = image::load_from_memory(&buffer)?;
-    print(&image, &config)?;
-
-    Ok(())
-}
+// Removed old stdin helper; stdin is handled inline in run()
