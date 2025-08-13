@@ -6,10 +6,10 @@ pub fn reformat_search_tags(tags: String) -> String {
     let extra_spaces = Regex::new(r"\s{2,}").unwrap();
     let delimiters = Regex::new(r"[,\s]").unwrap();
 
-    // Remove excess spaces (2 or more)
-    extra_spaces.replace_all(&tags, "");
-    // Replace commas and spaces with %20
-    let search_tags = delimiters.replace_all(&tags, "%20");
+    // Collapse runs of whitespace to a single space, then replace spaces/commas with %20
+    let trimmed = tags.trim();
+    let collapsed = extra_spaces.replace_all(trimmed, " ");
+    let search_tags = delimiters.replace_all(&collapsed, "%20");
 
     search_tags.to_string()
 }

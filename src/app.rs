@@ -1,109 +1,109 @@
-use atty::Stream;
-use clap::Clap;
+use clap::{Args, Parser, Subcommand, ValueHint};
+use is_terminal::IsTerminal;
 use std::error::Error;
 use std::path::PathBuf;
 use viuer::{print, print_from_file};
 
-#[derive(Clap, Debug)]
-#[clap(about = "View random anime fanart in your terminal")]
+#[derive(Parser, Debug)]
+#[command(about = "View random anime fanart in your terminal")]
 struct Cli {
     /// Resize the image to a provided height
-    #[clap(short, long)]
+    #[arg(short = 'H', long)]
     height: Option<u32>,
 
     /// Resize the image to a provided width
-    #[clap(short, long)]
+    #[arg(short = 'W', long)]
     width: Option<u32>,
 
-    #[clap(subcommand)]
-    subcommand: Option<Subcommand>,
+    #[command(subcommand)]
+    subcommand: Option<Commands>,
 }
 
-#[derive(Clap, Debug)]
-enum Subcommand {
-    #[clap(name = "safe")]
+#[derive(Subcommand, Debug)]
+enum Commands {
+    #[command(name = "safe")]
     Safebooru(Safebooru),
 
-    #[clap(name = "dan")]
+    #[command(name = "dan")]
     Danbooru(Danbooru),
 
-    #[clap(name = "url")]
+    #[command(name = "url")]
     Url(Url),
 
-    #[clap(name = "file")]
+    #[command(name = "file")]
     File(File),
 }
 
 /// Look at random images from Safebooru
-#[derive(Clap, Debug)]
+#[derive(Args, Debug)]
 pub struct Safebooru {
     /// Show data related to image (url, rating, dimensions, tags)
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub details: bool,
 
     /// Only display images with suggestive content
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub questionable: bool,
 
     /// Search for an image based on Safebooru tags.
     /// Pass as a string separated by spaces or commas.         
     /// Look at Safebooru's cheatsheet for a full list of search options
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub tags: Option<String>,
 }
 
 /// Look at random images from Danbooru
-#[derive(Clap, Debug)]
+#[derive(Args, Debug)]
 pub struct Danbooru {
     /// Show data related to image (artist, source, character, url, rating, dimensions, tags)
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub details: bool,
 
     /// Only display images lacking sexual content. Includes lingerie,
     /// swimsuits, innocent romance, etc. NOTE: this doesn't mean "safe
     /// for work."
-    #[clap(short, long)]
+    #[arg(short, long, conflicts_with_all = ["questionable", "explicit"])]
     pub safe: bool,
 
     /// Only display images with some nox-explicit nudity or sexual content
-    #[clap(short, long)]
+    #[arg(short, long, conflicts_with_all = ["safe", "explicit"])]
     pub questionable: bool,
 
     /// Only display images with explicit sexual content
-    #[clap(short, long)]
+    #[arg(short, long, conflicts_with_all = ["safe", "questionable"])]
     pub explicit: bool,
 
     /// Search for an image based on Danbooru tags.
     /// Pass as a string separated by spaces or commas.         
     /// Look at Danbooru's cheatsheet for a full list of search options
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub tags: Option<String>,
 
     /// Pass your Danbooru username for authentication.
     /// NOTE: This doesn't set a persistent environmental variable and
     /// instead only works for one session
-    #[clap(short, long, requires("key"))]
+    #[arg(short, long, requires = "key")]
     pub username: Option<String>,
 
     /// Pass your Danbooru API key for authentication.
     /// NOTE: This doesn't set a persistent environmental variable and
     /// instead only works for one session
-    #[clap(short, long, requires("username"))]
+    #[arg(short, long, requires = "username")]
     pub key: Option<String>,
 }
 
 /// View an image from a url
-#[derive(Clap, Debug)]
+#[derive(Args, Debug)]
 struct Url {
     /// The URL of an image (e.g. https://i.redd.it/7tycieudz3c61.png)
     image_url: String,
 }
 
 /// View an image from your file system
-#[derive(Clap, Debug)]
+#[derive(Args, Debug)]
 struct File {
     /// The path to an image file (e.g. ~/Pictures/your-image.jpg)
-    #[clap(parse(from_os_str), value_hint = clap::ValueHint::FilePath)]
+    #[arg(value_hint = ValueHint::FilePath)]
     file_path: PathBuf,
 }
 
@@ -121,27 +121,27 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     };
 
     // Read from stdin
-    if atty::isnt(Stream::Stdin) {
+    if !std::io::stdin().is_terminal() {
         result = show_image_from_stdin(config);
         return result;
     }
 
     if let Some(subcommand) = args.subcommand {
         match subcommand {
-            Subcommand::Danbooru(args) => {
+            Commands::Danbooru(args) => {
                 let dan_args = Danbooru { ..args };
-                let dan_args = Subcommand::Danbooru(dan_args);
+                let dan_args = Commands::Danbooru(dan_args);
                 result = show_random_image(dan_args, config);
             }
-            Subcommand::Safebooru(args) => {
+            Commands::Safebooru(args) => {
                 let safe_args = Safebooru { ..args };
-                let safe_args = Subcommand::Safebooru(safe_args);
+                let safe_args = Commands::Safebooru(safe_args);
                 result = show_random_image(safe_args, config);
             }
-            Subcommand::File(file) => {
+            Commands::File(file) => {
                 result = show_image_with_path(file.file_path, config);
             }
-            Subcommand::Url(url) => {
+            Commands::Url(url) => {
                 result = show_image_with_url(url.image_url, config);
             }
         };
@@ -152,7 +152,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             tags: None,
         };
 
-        let default = Subcommand::Safebooru(default_options);
+        let default = Commands::Safebooru(default_options);
 
         result = show_random_image(default, config);
     }
@@ -160,12 +160,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     result
 }
 
-fn show_random_image(args: Subcommand, config: viuer::Config) -> Result<(), Box<dyn Error>> {
+fn show_random_image(args: Commands, config: viuer::Config) -> Result<(), Box<dyn Error>> {
     use crate::api::{danbooru, safebooru};
 
     let image_url = match args {
-        Subcommand::Danbooru(args) => danbooru::grab_random_image(args),
-        Subcommand::Safebooru(args) => safebooru::grab_random_image(args),
+        Commands::Danbooru(args) => danbooru::grab_random_image(args),
+        Commands::Safebooru(args) => safebooru::grab_random_image(args),
         _ => panic!(
             "Invalid subcommand passed to show_random_image. \
                 Only valid ones are 'Danbooru' and 'Safebooru'."
@@ -176,7 +176,12 @@ fn show_random_image(args: Subcommand, config: viuer::Config) -> Result<(), Box<
 }
 
 fn show_image_with_url(image_url: String, config: viuer::Config) -> Result<(), Box<dyn Error>> {
-    let image_bytes = reqwest::blocking::get(&image_url)?.bytes()?;
+    use reqwest::blocking::Client;
+    use std::time::Duration;
+
+    let client = Client::builder().timeout(Duration::from_secs(15)).build()?;
+
+    let image_bytes = client.get(&image_url).send()?.bytes()?;
     let image = image::load_from_memory(&image_bytes)?;
 
     print(&image, &config)?;

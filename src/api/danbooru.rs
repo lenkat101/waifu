@@ -161,7 +161,11 @@ fn parse_opt_u32(v: Option<&Value>) -> Option<u32> {
 }
 
 fn fetch_api_data(url: String) -> Result<Vec<ImageData>, Box<dyn Error>> {
-    let response = reqwest::blocking::get(&url)?;
+    use reqwest::blocking::Client;
+    use std::time::Duration;
+
+    let client = Client::builder().timeout(Duration::from_secs(15)).build()?;
+    let response = client.get(&url).send()?;
     let status = response.status();
     let text = response.text()?;
 
@@ -259,14 +263,13 @@ fn print_image_details(info: &ImageData) -> Result<(), Box<dyn std::error::Error
 
     if !source.is_empty() {
         if source.contains("pixiv") || source.contains("pximg") {
-            let id = match pixiv_id {
-                Some(id) => id,
-                None => unreachable!(),
-            };
-
-            let pixiv_source = format!("https://pixiv.net/en/artworks/{}", id);
-
-            println!("ℹ️ {title}: {}", pixiv_source, title = "Source".purple());
+            if let Some(id) = pixiv_id {
+                let pixiv_source = format!("https://pixiv.net/en/artworks/{}", id);
+                println!("ℹ️ {title}: {}", pixiv_source, title = "Source".purple());
+            } else {
+                // Fallback to printing the provided source if no pixiv_id available
+                println!("ℹ️ {title}: {}", source, title = "Source".purple());
+            }
         } else {
             println!("ℹ️ {title}: {}", source, title = "Source".purple());
         }

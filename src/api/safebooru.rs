@@ -133,12 +133,22 @@ fn parse_u32(value: Option<&Value>) -> u32 {
 }
 
 fn fetch_api_data(url: String) -> Result<Vec<ImageData>, Box<dyn Error>> {
-    let response = reqwest::blocking::get(&url)?;
+    use reqwest::blocking::Client;
+    use std::time::Duration;
+
+    let client = Client::builder().timeout(Duration::from_secs(15)).build()?;
+    let response = client.get(&url).send()?;
+    let status = response.status();
     let text = response.text()?;
 
     if text.trim_start().starts_with('<') {
         let message = "Safebooru returned HTML or an unexpected response.";
         return Err(Box::new(ResponseError(message.into())));
+    }
+
+    if !status.is_success() {
+        let message = format!("{}: Safebooru returned non-success status.", status);
+        return Err(Box::new(ResponseError(message)));
     }
 
     let raw: Value = serde_json::from_str(&text)

@@ -9,18 +9,18 @@ homepage = "https://github.com/lenkat101/waifu"
 repository = "https://github.com/lenkat101/waifu"
 keywords = ["cli", "search", "anime", "terminal", "waifu"]
 categories = ["command-line-utilities"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reqwest = { version = "0.10", features = ["blocking", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "^1", features = ["derive"] }
 serde_json = { version = "^1" }
-clap = "3.0.0-beta.2"
-colored = "2.0.0"
-viuer = "0.5.1"
-rand = "0.8.4"
-regex = "1.5.5"
-image = "0.23.14"
-atty = "0.2"
+clap = { version = "4.5", features = ["derive"] }
+colored = "2.1"
+viuer = "0.7"
+rand = "0.8"
+regex = "1.10"
+image = "0.24"
+is-terminal = "0.4"
