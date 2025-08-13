@@ -65,7 +65,8 @@ fn check_env_variables() -> (Option<String>, Option<String>) {
 }
 
 fn evaluate_arguments(args: &Danbooru) -> String {
-    let mut api = String::from("https://danbooru.donmai.us/posts.json?random=true");
+    // Use limit=1 and order:random in tags; some deployments 403 on random=true
+    let mut api = String::from("https://danbooru.donmai.us/posts.json?limit=1");
 
     if let Some(username) = &args.username {
         if let Some(api_key) = &args.key {
@@ -100,6 +101,8 @@ fn evaluate_arguments(args: &Danbooru) -> String {
     } else if *explicit {
         tags.push_str("%20rating:e");
     }
+    // Randomize via tag ordering to avoid random=true 403s
+    tags.push_str("%20order:random");
 
     let tags = format!("&tags={}", tags);
     api.push_str(&tags);
