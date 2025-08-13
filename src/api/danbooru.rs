@@ -166,9 +166,17 @@ fn fetch_api_data(url: String) -> Result<Vec<ImageData>, Box<dyn Error>> {
 
     let client = Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (compatible; waifu/1.0; +https://github.com/lenkat101/waifu)")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 Waifu/1.0")
         .build()?;
-    let response = client.get(&url).send()?;
+    let mut req = client
+        .get(&url)
+        .header(reqwest::header::ACCEPT, "application/json, text/plain, */*")
+        .header(reqwest::header::ACCEPT_LANGUAGE, "en-US,en;q=0.9")
+        .header(reqwest::header::REFERER, "https://danbooru.donmai.us/");
+    if let (Some(user), Some(key)) = check_env_variables() {
+        req = req.basic_auth(user, Some(key));
+    }
+    let response = req.send()?;
     let status = response.status();
     let text = response.text()?;
 
