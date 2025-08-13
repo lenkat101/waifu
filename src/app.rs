@@ -4,6 +4,8 @@ use std::error::Error;
 use std::path::PathBuf;
 use viuer::{print, print_from_file};
 
+const MAX_IMAGE_BYTES: usize = 20 * 1024 * 1024; // 20 MiB hard cap to avoid OOM
+
 #[derive(Parser, Debug)]
 #[command(about = "View random anime fanart in your terminal")]
 struct Cli {
@@ -126,6 +128,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         let mut buf = Vec::new();
         let _ = stdin().read_to_end(&mut buf)?;
         if !buf.is_empty() {
+            if buf.len() > MAX_IMAGE_BYTES {
+                return Err(format!(
+                    "Input image too large ({} bytes > {} bytes)",
+                    buf.len(),
+                    MAX_IMAGE_BYTES
+                )
+                .into());
+            }
             let image = image::load_from_memory(&buf)?;
             print(&image, &config)?;
             return Ok(());
@@ -184,32 +194,102 @@ fn show_random_image(args: Commands, config: viuer::Config) -> Result<(), Box<dy
 
 fn show_image_with_url(image_url: String, config: viuer::Config) -> Result<(), Box<dyn Error>> {
     use reqwest::blocking::Client;
-    use std::time::Duration;
+    use reqwest::header;
     use std::fs::File;
     use std::io::Write;
+    use std::time::Duration;
 
-    let client = Client::builder().timeout(Duration::from_secs(15)).build()?;
+    let client = Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(20))
+        .build()?;
 
-    let resp = client.get(&image_url).send()?;
-    let status = resp.status();
-    let ct = resp
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_string();
-    let image_bytes = resp.bytes()?;
-    let image = match image::load_from_memory(&image_bytes) {
+    // Simple retry for transient errors
+    #[allow(unused_assignments)]
+    let mut last_err: Option<String> = None;
+    let bytes = {
+        let mut attempts = 0;
+        loop {
+            attempts += 1;
+            let resp = client.get(&image_url).send();
+            match resp {
+                Ok(resp) => {
+                    let status = resp.status();
+                    let ct = resp
+                        .headers()
+                        .get(header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+
+                    if !status.is_success() || (!ct.is_empty() && !ct.starts_with("image/")) {
+                        let mut path = std::env::temp_dir();
+                        path.push("waifu_fetch_error.bin");
+                        if let Ok(mut f) = File::create(&path) {
+                            if let Ok(buf) = resp.bytes() {
+                                let _ = f.write_all(&buf);
+                            }
+                        }
+                        return Err(format!(
+                            "Failed to fetch image: HTTP {} (content-type: {}). Saved bytes to {}",
+                            status,
+                            if ct.is_empty() { "unknown" } else { &ct },
+                            path.display()
+                        )
+                        .into());
+                    }
+
+                    if let Some(len) = resp.headers().get(header::CONTENT_LENGTH) {
+                        if let Some(len) = len.to_str().ok().and_then(|s| s.parse::<usize>().ok()) {
+                            if len > MAX_IMAGE_BYTES {
+                                return Err(format!(
+                                    "Image too large ({} bytes > {} bytes)",
+                                    len, MAX_IMAGE_BYTES
+                                )
+                                .into());
+                            }
+                        }
+                    }
+
+                    let body = resp.bytes()?;
+                    if body.len() > MAX_IMAGE_BYTES {
+                        return Err(format!(
+                            "Image too large ({} bytes > {} bytes)",
+                            body.len(),
+                            MAX_IMAGE_BYTES
+                        )
+                        .into());
+                    }
+                    break body;
+                }
+                Err(e) => {
+                    last_err = Some(e.to_string());
+                    if attempts >= 3 {
+                        return Err(format!(
+                            "Failed to fetch image after {} attempts: {}",
+                            attempts,
+                            last_err.unwrap_or_else(|| "unknown error".into())
+                        )
+                        .into());
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(200 * attempts as u64));
+                }
+            }
+        }
+    };
+
+    let image = match image::load_from_memory(&bytes) {
         Ok(img) => img,
         Err(e) => {
             let mut path = std::env::temp_dir();
             path.push("waifu_fetch_error.bin");
             if let Ok(mut f) = File::create(&path) {
-                let _ = f.write_all(&image_bytes);
+                let _ = f.write_all(&bytes);
             }
             return Err(format!(
-                "Failed to decode image: {} (status: {}, content-type: {}). Saved bytes to {}",
-                e, status, ct, path.display()
+                "Failed to decode image: {}. Saved bytes to {}",
+                e,
+                path.display()
             )
             .into());
         }
