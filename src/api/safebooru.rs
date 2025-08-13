@@ -39,12 +39,17 @@ pub fn grab_random_image(args: Safebooru) -> String {
 
     let image = &data[index];
 
-    let image_url = format!(
-        "https://safebooru.org//images/{dir}/{img}?{id}",
-        dir = image.directory,
-        img = image.image,
-        id = image.id
-    );
+    // Prefer API-provided file_url when available (avoids missing directory issues)
+    let image_url = if let Some(url) = item_file_url(image) {
+        url
+    } else {
+        format!(
+            "https://safebooru.org/images/{dir}/{img}?{id}",
+            dir = image.directory,
+            img = image.image,
+            id = image.id
+        )
+    };
 
     if args.details {
         let ImageData {
@@ -111,6 +116,12 @@ struct ImageData {
     width: u32,
     height: u32,
     tags: String,
+    file_url: Option<String>,
+}
+
+// Helper to extract file_url when present in the serialized map
+fn item_file_url(image: &ImageData) -> Option<String> {
+    image.file_url.clone()
 }
 
 #[derive(Debug)]
@@ -182,6 +193,10 @@ fn fetch_api_data(url: String) -> Result<Vec<ImageData>, Box<dyn Error>> {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
+        let file_url = item
+            .get("file_url")
+            .and_then(Value::as_str)
+            .map(|s| s.to_string());
 
         data.push(ImageData {
             directory,
@@ -191,6 +206,7 @@ fn fetch_api_data(url: String) -> Result<Vec<ImageData>, Box<dyn Error>> {
             width,
             height,
             tags,
+            file_url,
         });
     }
 

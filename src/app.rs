@@ -120,10 +120,17 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         ..Default::default()
     };
 
-    // Read from stdin
+    // Read from stdin when data is actually present
     if !std::io::stdin().is_terminal() {
-        result = show_image_from_stdin(config);
-        return result;
+        use std::io::{stdin, Read};
+        let mut buf = Vec::new();
+        let _ = stdin().read_to_end(&mut buf)?;
+        if !buf.is_empty() {
+            let image = image::load_from_memory(&buf)?;
+            print(&image, &config)?;
+            return Ok(());
+        }
+        // If stdin is empty, fall through to normal subcommand handling
     }
 
     if let Some(subcommand) = args.subcommand {
@@ -178,11 +185,35 @@ fn show_random_image(args: Commands, config: viuer::Config) -> Result<(), Box<dy
 fn show_image_with_url(image_url: String, config: viuer::Config) -> Result<(), Box<dyn Error>> {
     use reqwest::blocking::Client;
     use std::time::Duration;
+    use std::fs::File;
+    use std::io::Write;
 
     let client = Client::builder().timeout(Duration::from_secs(15)).build()?;
 
-    let image_bytes = client.get(&image_url).send()?.bytes()?;
-    let image = image::load_from_memory(&image_bytes)?;
+    let resp = client.get(&image_url).send()?;
+    let status = resp.status();
+    let ct = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let image_bytes = resp.bytes()?;
+    let image = match image::load_from_memory(&image_bytes) {
+        Ok(img) => img,
+        Err(e) => {
+            let mut path = std::env::temp_dir();
+            path.push("waifu_fetch_error.bin");
+            if let Ok(mut f) = File::create(&path) {
+                let _ = f.write_all(&image_bytes);
+            }
+            return Err(format!(
+                "Failed to decode image: {} (status: {}, content-type: {}). Saved bytes to {}",
+                e, status, ct, path.display()
+            )
+            .into());
+        }
+    };
 
     print(&image, &config)?;
 
@@ -195,17 +226,4 @@ fn show_image_with_path(image_path: PathBuf, config: viuer::Config) -> Result<()
     Ok(())
 }
 
-fn show_image_from_stdin(config: viuer::Config) -> Result<(), Box<dyn Error>> {
-    use std::io::{stdin, Read};
-
-    let stdin = stdin();
-    let mut handle = stdin.lock();
-
-    let mut buffer: Vec<u8> = Vec::new();
-    let _ = handle.read_to_end(&mut buffer)?;
-
-    let image = image::load_from_memory(&buffer)?;
-    print(&image, &config)?;
-
-    Ok(())
-}
+// Removed old stdin helper; stdin is handled inline in run()
